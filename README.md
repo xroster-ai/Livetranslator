@@ -14,6 +14,7 @@ Point it at a conversation between two people speaking different languages — s
 - **Tunable response delay.** A slider controls how long a speaker's pause must be before the interpreter jumps in (server-side voice-activity detection).
 - **Futuristic UI.** Animated aurora orb, live mic level meter, glassmorphism panels, and a running conversation transcript (what was *heard* vs. the *translation*).
 - **Keyboard shortcut.** Press <kbd>Space</kbd> to start/stop.
+- **Installable PWA.** Add it to your home screen / desktop and launch it full-screen like a native app; the interface works offline (the OpenAI API itself still needs a connection).
 
 ## 🚀 Use it live
 
@@ -59,6 +60,16 @@ The whole app is a single static `index.html`, so GitHub Pages can serve it dire
 2. Under **Build and deployment → Source**, choose **Deploy from a branch**.
 3. Set **Branch** to `main` and folder to **`/ (root)`**, then **Save**.
 4. Wait ~1 minute, then open **https://xroster-ai.github.io/Livetranslator/**.
+
+### Install as an app (PWA)
+
+Once the site is live over HTTPS, it's a full Progressive Web App:
+
+- **Desktop (Chrome/Edge):** click the **⬇ Install app** button in the header, or the install icon in the address bar.
+- **Android:** browser menu → *Add to Home screen* / *Install app*.
+- **iOS (Safari):** Share → *Add to Home Screen*.
+
+It then launches full-screen with its own icon, and the UI shell is cached for offline use via `sw.js` + `manifest.webmanifest`.
 
 ---
 

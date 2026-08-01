@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Aurora · Live Translator</title>
 <meta name="description" content="Real-time bilingual voice translator powered by the OpenAI Realtime API." />
+<!-- PWA -->
+<link rel="manifest" href="./manifest.webmanifest" />
+<meta name="theme-color" content="#05060d" />
+<link rel="icon" type="image/png" href="./favicon.png" />
+<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Aurora" />
 <style>
   :root{
     --bg:#05060d;
@@ -186,7 +195,10 @@
         <p>Real-time two-way voice interpreter · OpenAI Realtime API</p>
       </div>
     </div>
-    <div class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">Idle</span></div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <button class="btn-ghost" id="installBtn" type="button" style="display:none">⬇ Install app</button>
+      <div class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">Idle</span></div>
+    </div>
   </header>
 
   <!-- Settings -->
@@ -704,6 +716,26 @@ document.addEventListener('keydown', e=>{
 });
 
 load();
+
+/* ---------- PWA: service worker + install prompt ---------- */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js').catch(err=>console.warn('SW failed', err));
+  });
+}
+let deferredPrompt=null;
+const installBtn=$('installBtn');
+window.addEventListener('beforeinstallprompt', e=>{
+  e.preventDefault(); deferredPrompt=e; installBtn.style.display='inline-flex';
+});
+installBtn.onclick = async ()=>{
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  deferredPrompt=null; installBtn.style.display='none';
+  if(outcome==='accepted') toast('Installing Aurora…');
+};
+window.addEventListener('appinstalled', ()=>{ installBtn.style.display='none'; toast('Aurora installed 🎉'); });
 </script>
 </body>
 </html>
