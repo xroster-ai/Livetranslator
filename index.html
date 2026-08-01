@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aurora · Live Translator</title>
+<meta name="description" content="Real-time bilingual voice translator powered by the OpenAI Realtime API." />
+<style>
+  :root{
+    --bg:#05060d;
+    --bg2:#0a0d1f;
+    --panel:rgba(20,24,45,0.55);
+    --panel-solid:#11142a;
+    --stroke:rgba(140,160,255,0.14);
+    --stroke-strong:rgba(140,160,255,0.30);
+    --txt:#e8ecff;
+    --muted:#8b93bf;
+    --cyan:#22e3ff;
+    --violet:#8b5cff;
+    --magenta:#ff4ecd;
+    --green:#33f0a0;
+    --red:#ff5a6e;
+    --amber:#ffcf5a;
+    --radius:18px;
+    --shadow:0 20px 60px -20px rgba(0,0,0,0.8);
+    font-synthesis:none;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    color:var(--txt);
+    background:
+      radial-gradient(1200px 700px at 12% -10%, rgba(139,92,255,0.18), transparent 55%),
+      radial-gradient(1000px 700px at 110% 10%, rgba(34,227,255,0.14), transparent 55%),
+      radial-gradient(900px 600px at 50% 120%, rgba(255,78,205,0.12), transparent 55%),
+      var(--bg);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background-image:linear-gradient(rgba(140,160,255,0.035) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(140,160,255,0.035) 1px,transparent 1px);
+    background-size:44px 44px;
+    mask-image:radial-gradient(1000px 700px at 50% 0%,#000,transparent 80%);
+  }
+  .wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:28px 20px 60px}
+
+  header.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:26px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:14px}
+  .logo{
+    width:44px;height:44px;border-radius:13px;position:relative;flex:0 0 auto;
+    background:conic-gradient(from 140deg,var(--cyan),var(--violet),var(--magenta),var(--cyan));
+    box-shadow:0 0 28px -6px var(--violet);
+  }
+  .logo::after{content:"";position:absolute;inset:3px;border-radius:10px;background:var(--bg2);}
+  .logo::before{content:"";position:absolute;inset:0;border-radius:13px;animation:spin 8s linear infinite;
+    background:conic-gradient(from 140deg,var(--cyan),var(--violet),var(--magenta),var(--cyan));filter:blur(9px);opacity:.55;z-index:-1}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .brand h1{font-size:19px;font-weight:700;letter-spacing:.2px;line-height:1}
+  .brand p{font-size:12px;color:var(--muted);margin-top:4px;letter-spacing:.3px}
+  .brand .accent{background:linear-gradient(90deg,var(--cyan),var(--magenta));-webkit-background-clip:text;background-clip:text;color:transparent}
+
+  .status-pill{display:inline-flex;align-items:center;gap:9px;padding:9px 15px;border-radius:999px;
+    background:var(--panel);border:1px solid var(--stroke);backdrop-filter:blur(12px);font-size:13px;font-weight:500}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);box-shadow:0 0 0 0 rgba(0,0,0,0)}
+  .dot.live{background:var(--green);animation:pulse 1.6s infinite}
+  .dot.warn{background:var(--amber)}
+  .dot.err{background:var(--red)}
+  .dot.connecting{background:var(--cyan);animation:pulse 1s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(51,240,160,.5)}70%{box-shadow:0 0 0 10px rgba(51,240,160,0)}100%{box-shadow:0 0 0 0 rgba(51,240,160,0)}}
+
+  .card{background:var(--panel);border:1px solid var(--stroke);border-radius:var(--radius);backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+
+  /* Stage */
+  .stage{padding:30px 24px 26px;display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:20px;position:relative;overflow:hidden}
+  .pair-badge{display:flex;align-items:center;gap:12px;font-size:14px;color:var(--muted);margin-bottom:22px;flex-wrap:wrap;justify-content:center}
+  .pair-badge b{color:var(--txt);font-weight:600}
+  .pair-badge .arrows{color:var(--cyan);font-size:16px}
+
+  .orb-wrap{position:relative;width:210px;height:210px;display:grid;place-items:center;margin:6px 0 4px}
+  .orb{width:150px;height:150px;border-radius:50%;position:relative;
+    background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.28),rgba(139,92,255,.25) 40%,rgba(9,11,26,.9) 72%);
+    box-shadow:inset 0 0 40px rgba(139,92,255,.35),0 0 60px -12px rgba(139,92,255,.5);
+    transition:transform .12s ease}
+  .orb::before,.orb::after{content:"";position:absolute;inset:-14px;border-radius:50%;border:1px solid var(--stroke-strong)}
+  .ring{position:absolute;border-radius:50%;border:1px solid rgba(34,227,255,.25);inset:0}
+  .ring.r2{inset:-22px;border-color:rgba(255,78,205,.18)}
+  .ring.r3{inset:-44px;border-color:rgba(139,92,255,.12)}
+  body.listening .orb{animation:breathe 2.4s ease-in-out infinite}
+  body.listening .ring{animation:ripple 3s ease-out infinite}
+  body.listening .ring.r2{animation-delay:.6s}
+  body.listening .ring.r3{animation-delay:1.2s}
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+  @keyframes ripple{0%{opacity:.6;transform:scale(.9)}100%{opacity:0;transform:scale(1.15)}}
+  .orb-core{position:absolute;font-size:30px;filter:drop-shadow(0 0 12px rgba(34,227,255,.6))}
+
+  .level-meter{width:220px;height:6px;border-radius:999px;background:rgba(255,255,255,.06);margin:20px 0 4px;overflow:hidden}
+  .level-bar{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,var(--cyan),var(--violet),var(--magenta));transition:width .08s linear}
+  .stage-hint{font-size:13px;color:var(--muted);margin-top:14px;min-height:18px}
+
+  .controls{display:flex;gap:14px;margin-top:24px;flex-wrap:wrap;justify-content:center}
+  button{font-family:inherit;font-weight:600;font-size:15px;cursor:pointer;border:none;border-radius:14px;transition:.18s;letter-spacing:.2px}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .btn-start{padding:15px 34px;color:#04121a;
+    background:linear-gradient(120deg,var(--cyan),var(--green));box-shadow:0 10px 30px -8px rgba(34,227,255,.6)}
+  .btn-start:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 16px 40px -10px rgba(34,227,255,.8)}
+  .btn-stop{padding:15px 34px;color:#fff;background:linear-gradient(120deg,#ff5a6e,#ff2e9a);box-shadow:0 10px 30px -8px rgba(255,46,154,.5)}
+  .btn-stop:hover:not(:disabled){transform:translateY(-2px)}
+  .btn-ghost{padding:13px 20px;color:var(--txt);background:rgba(255,255,255,.05);border:1px solid var(--stroke)}
+  .btn-ghost:hover{background:rgba(255,255,255,.09)}
+
+  /* Transcript */
+  .section-title{display:flex;align-items:center;justify-content:space-between;margin:0 4px 12px;font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.6px;text-transform:uppercase}
+  .transcript{padding:8px;min-height:220px;max-height:52vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin-bottom:20px}
+  .transcript:empty::after{content:"Your conversation will appear here — heard speech and its translation, side by side.";color:var(--muted);font-size:13.5px;display:block;text-align:center;padding:70px 20px;opacity:.7}
+  .turn{border:1px solid var(--stroke);border-radius:14px;padding:13px 15px;background:rgba(10,13,31,.5);animation:rise .35s ease}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .turn .heard{font-size:14px;color:var(--muted);display:flex;gap:8px;align-items:flex-start}
+  .turn .heard .tag{color:var(--cyan)}
+  .turn .trans{font-size:17px;font-weight:600;margin-top:9px;display:flex;gap:8px;align-items:flex-start;line-height:1.4}
+  .turn .trans .tag{color:var(--magenta)}
+  .tag{font-size:11px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:6px;background:rgba(255,255,255,.06);white-space:nowrap;margin-top:2px}
+  .turn.pending .trans{opacity:.7}
+  .caret{display:inline-block;width:8px;height:16px;background:var(--cyan);margin-left:2px;animation:blink 1s steps(2) infinite;vertical-align:middle;border-radius:2px}
+  @keyframes blink{50%{opacity:0}}
+
+  /* Settings */
+  details.settings{margin-bottom:20px}
+  details.settings > summary{list-style:none;cursor:pointer;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:15px}
+  details.settings > summary::-webkit-details-marker{display:none}
+  details.settings > summary .chev{color:var(--muted);transition:.2s}
+  details.settings[open] > summary .chev{transform:rotate(180deg)}
+  .settings-body{padding:4px 20px 22px;border-top:1px solid var(--stroke)}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:18px}
+  .field{display:flex;flex-direction:column;gap:7px}
+  .field.full{grid-column:1/-1}
+  label{font-size:12.5px;color:var(--muted);font-weight:600;letter-spacing:.3px;display:flex;align-items:center;gap:8px;justify-content:space-between}
+  label .hint{font-weight:500;color:var(--cyan);font-size:11.5px}
+  input,select{width:100%;padding:12px 13px;border-radius:11px;background:rgba(4,6,14,.7);border:1px solid var(--stroke);
+    color:var(--txt);font-family:inherit;font-size:14px;outline:none;transition:.16s}
+  input:focus,select:focus{border-color:var(--stroke-strong);box-shadow:0 0 0 3px rgba(139,92,255,.12)}
+  select option{background:var(--panel-solid)}
+  input[type=range]{padding:0;height:6px;-webkit-appearance:none;background:rgba(255,255,255,.1);border:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--cyan);cursor:pointer;box-shadow:0 0 12px rgba(34,227,255,.7)}
+  input[type=range]::-moz-range-thumb{width:18px;height:18px;border:none;border-radius:50%;background:var(--cyan);cursor:pointer}
+  .key-row{display:flex;gap:10px}
+  .key-row input{flex:1}
+  .model-note{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5}
+  .model-note b{color:var(--txt)}
+  .swap-btn{align-self:end;padding:12px;border-radius:11px;background:rgba(255,255,255,.06);border:1px solid var(--stroke);color:var(--cyan);font-size:16px;height:44px;width:44px;flex:0 0 auto}
+  .swap-btn:hover{background:rgba(34,227,255,.12)}
+  .lang-row{display:flex;gap:12px;align-items:flex-end}
+  .lang-row .field{flex:1}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(30px);background:var(--panel-solid);
+    border:1px solid var(--stroke-strong);color:var(--txt);padding:13px 18px;border-radius:12px;font-size:14px;
+    box-shadow:var(--shadow);opacity:0;transition:.3s;z-index:50;max-width:90vw;display:flex;gap:10px;align-items:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.err{border-color:var(--red)}
+  .toast .em{font-size:16px}
+
+  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:34px;line-height:1.7}
+  footer a{color:var(--cyan);text-decoration:none}
+  footer a:hover{text-decoration:underline}
+  .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(255,255,255,.07);padding:1px 6px;border-radius:5px;font-size:11px}
+
+  @media(max-width:640px){
+    .grid{grid-template-columns:1fr}
+    .brand h1{font-size:17px}
+    .orb-wrap{width:180px;height:180px}
+    .orb{width:130px;height:130px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <h1>Aurora <span class="accent">Live Translator</span></h1>
+        <p>Real-time two-way voice interpreter · OpenAI Realtime API</p>
+      </div>
+    </div>
+    <div class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">Idle</span></div>
+  </header>
+
+  <!-- Settings -->
+  <details class="settings card" id="settingsPanel" open>
+    <summary>⚙️ Settings <span class="chev">▾</span></summary>
+    <div class="settings-body">
+
+      <div class="field full">
+        <label>OpenAI API Key <span class="hint" id="keyStatus">not saved</span></label>
+        <div class="key-row">
+          <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
+          <button class="btn-ghost" id="toggleKey" type="button" title="Show / hide">👁</button>
+          <button class="btn-ghost" id="saveKey" type="button">Save</button>
+        </div>
+        <div class="model-note">Stored only in <b>this browser's localStorage</b> and sent directly to OpenAI — never to any other server.</div>
+      </div>
+
+      <div class="lang-row" style="margin-top:18px">
+        <div class="field">
+          <label>Language A</label>
+          <input id="langA" list="langList" placeholder="English" />
+        </div>
+        <button class="swap-btn" id="swapLang" type="button" title="Swap languages">⇄</button>
+        <div class="field">
+          <label>Language B</label>
+          <input id="langB" list="langList" placeholder="Chinese (Mandarin)" />
+        </div>
+      </div>
+      <datalist id="langList">
+        <option>English</option>
+        <option>Chinese (Mandarin)</option><option>Chinese (Cantonese)</option><option>Chinese (Simplified)</option><option>Chinese (Traditional)</option>
+        <option>Arabic (Modern Standard)</option><option>Moroccan Arabic (Darija)</option><option>Egyptian Arabic</option><option>Levantine Arabic</option><option>Gulf Arabic</option>
+        <option>Spanish</option><option>French</option><option>German</option><option>Italian</option><option>Portuguese</option>
+        <option>Portuguese (Brazil)</option><option>Japanese</option><option>Korean</option><option>Russian</option><option>Hindi</option>
+        <option>Turkish</option><option>Vietnamese</option><option>Thai</option><option>Indonesian</option><option>Malay</option>
+        <option>Dutch</option><option>Polish</option><option>Ukrainian</option><option>Hebrew</option><option>Greek</option>
+        <option>Swedish</option><option>Norwegian</option><option>Danish</option><option>Finnish</option><option>Czech</option>
+        <option>Slovak</option><option>Romanian</option><option>Hungarian</option><option>Bulgarian</option><option>Croatian</option>
+        <option>Serbian</option><option>Slovenian</option><option>Catalan</option><option>Farsi (Persian)</option><option>Urdu</option>
+        <option>Bengali</option><option>Tamil</option><option>Telugu</option><option>Marathi</option><option>Gujarati</option>
+        <option>Kannada</option><option>Malayalam</option><option>Punjabi</option><option>Tagalog (Filipino)</option><option>Swahili</option>
+        <option>Amharic</option><option>Hausa</option><option>Yoruba</option><option>Somali</option><option>Afrikaans</option>
+        <option>Icelandic</option><option>Welsh</option><option>Irish</option><option>Basque</option><option>Galician</option>
+        <option>Lithuanian</option><option>Latvian</option><option>Estonian</option><option>Albanian</option><option>Macedonian</option>
+        <option>Armenian</option><option>Georgian</option><option>Azerbaijani</option><option>Kazakh</option><option>Uzbek</option>
+        <option>Mongolian</option><option>Nepali</option><option>Sinhala</option><option>Khmer</option><option>Lao</option>
+        <option>Burmese</option><option>Pashto</option><option>Kurdish</option><option>Belarusian</option><option>Maltese</option>
+        <option>Luxembourgish</option><option>Maori</option><option>Hawaiian</option><option>Latin</option><option>Haitian Creole</option>
+      </datalist>
+
+      <div class="grid">
+        <div class="field">
+          <label>Model <span class="hint" id="costHint">~$0.016 / min</span></label>
+          <select id="model">
+            <optgroup label="Latest — GA (recommended)">
+              <option value="gpt-realtime-mini">gpt-realtime-mini · cheapest</option>
+              <option value="gpt-realtime">gpt-realtime · best quality</option>
+              <option value="gpt-realtime-2.1-mini">gpt-realtime-2.1-mini</option>
+              <option value="gpt-realtime-2.1">gpt-realtime-2.1</option>
+            </optgroup>
+            <optgroup label="Legacy preview (fallback)">
+              <option value="gpt-4o-mini-realtime-preview">gpt-4o-mini-realtime-preview</option>
+              <option value="gpt-4o-realtime-preview">gpt-4o-realtime-preview</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="field">
+          <label>Voice <span class="hint" id="voiceHint"></span></label>
+          <div class="key-row">
+            <select id="voice">
+              <option value="marin">Marin — warm, natural (new)</option>
+              <option value="cedar">Cedar — calm, clear (new)</option>
+              <option value="alloy">Alloy — neutral</option>
+              <option value="ash">Ash — soft</option>
+              <option value="ballad">Ballad — expressive</option>
+              <option value="coral">Coral — bright</option>
+              <option value="echo">Echo — crisp</option>
+              <option value="sage">Sage — mellow</option>
+              <option value="shimmer">Shimmer — airy</option>
+              <option value="verse">Verse — lively</option>
+            </select>
+            <button class="btn-ghost" id="previewVoice" type="button" title="Play a sample of this voice">▶ Preview</button>
+          </div>
+        </div>
+        <div class="field full">
+          <label>Response delay — silence before translating <span class="hint" id="silenceHint">0.7 s</span></label>
+          <input id="silence" type="range" min="200" max="2000" step="50" value="700" />
+          <div class="model-note">Shorter = snappier but may cut people off. Longer = waits for a full pause before interpreting.</div>
+        </div>
+      </div>
+
+      <div class="model-note" style="margin-top:16px">
+        <b>Tip:</b> the mini models are excellent for translation and cost a fraction of the full models. Switch anytime to balance quality vs. cost.
+      </div>
+    </div>
+  </details>
+
+  <!-- Stage -->
+  <div class="stage card">
+    <div class="pair-badge">
+      <b id="badgeA">English</b><span class="arrows">⇄</span><b id="badgeB">Chinese (Mandarin)</b>
+    </div>
+    <div class="orb-wrap">
+      <div class="ring r3"></div><div class="ring r2"></div><div class="ring"></div>
+      <div class="orb"><span class="orb-core" id="orbIcon">🎧</span></div>
+    </div>
+    <div class="level-meter"><div class="level-bar" id="levelBar"></div></div>
+    <div class="stage-hint" id="stageHint">Add your API key and languages, then press Start.</div>
+    <div class="controls">
+      <button class="btn-start" id="startBtn">▶ Start listening</button>
+      <button class="btn-stop" id="stopBtn" disabled>■ Stop</button>
+      <button class="btn-ghost" id="clearBtn" type="button">Clear</button>
+    </div>
+  </div>
+
+  <!-- Transcript -->
+  <div class="section-title">Conversation <span id="turnCount"></span></div>
+  <div class="transcript" id="transcript"></div>
+
+  <footer>
+    Bring your own OpenAI key · everything runs locally in your browser.<br/>
+    Press <span class="kbd">Space</span> to start / stop. Built with the OpenAI Realtime API over WebRTC.
+  </footer>
+</div>
+
+<div class="toast" id="toast"><span class="em">✨</span><span id="toastMsg"></span></div>
+
+<script>
+"use strict";
+/* ---------- persistence ---------- */
+const LS = {
+  key:'lt_apiKey', model:'lt_model', voice:'lt_voice',
+  langA:'lt_langA', langB:'lt_langB', silence:'lt_silence'
+};
+const $ = id => document.getElementById(id);
+
+const MODEL_META = {
+  'gpt-realtime-mini':       {gen:'ga', cost:'~$0.016 / min'},
+  'gpt-realtime':            {gen:'ga', cost:'~$0.05 / min'},
+  'gpt-realtime-2.1-mini':   {gen:'ga', cost:'~$0.016 / min'},
+  'gpt-realtime-2.1':        {gen:'ga', cost:'~$0.05 / min'},
+  'gpt-4o-mini-realtime-preview':{gen:'preview', cost:'~$0.06 / min'},
+  'gpt-4o-realtime-preview': {gen:'preview', cost:'~$0.24 / min'},
+};
+// Voices supported on the older preview models (avoid errors on those).
+const PREVIEW_VOICES = new Set(['alloy','ash','ballad','coral','echo','sage','shimmer','verse']);
+
+/* ---------- element refs ---------- */
+const el = {
+  apiKey:$('apiKey'), saveKey:$('saveKey'), toggleKey:$('toggleKey'), keyStatus:$('keyStatus'),
+  langA:$('langA'), langB:$('langB'), swap:$('swapLang'),
+  model:$('model'), voice:$('voice'), previewVoice:$('previewVoice'), voiceHint:$('voiceHint'),
+  silence:$('silence'), silenceHint:$('silenceHint'), costHint:$('costHint'),
+  badgeA:$('badgeA'), badgeB:$('badgeB'),
+  start:$('startBtn'), stop:$('stopBtn'), clear:$('clearBtn'),
+  transcript:$('transcript'), turnCount:$('turnCount'),
+  statusDot:$('statusDot'), statusText:$('statusText'), stageHint:$('stageHint'), orbIcon:$('orbIcon'),
+  levelBar:$('levelBar'), settings:$('settingsPanel'), toast:$('toast'), toastMsg:$('toastMsg'),
+};
+
+/* ---------- load saved settings ---------- */
+function load(){
+  el.apiKey.value = localStorage.getItem(LS.key) || '';
+  el.langA.value  = localStorage.getItem(LS.langA) || 'English';
+  el.langB.value  = localStorage.getItem(LS.langB) || 'Chinese (Mandarin)';
+  el.model.value  = localStorage.getItem(LS.model) || 'gpt-realtime-mini';
+  el.voice.value  = localStorage.getItem(LS.voice) || 'marin';
+  el.silence.value= localStorage.getItem(LS.silence) || '700';
+  if(el.apiKey.value){ el.keyStatus.textContent='saved ✓'; el.keyStatus.style.color='var(--green)'; }
+  refreshLabels();
+}
+function refreshLabels(){
+  el.badgeA.textContent = el.langA.value || 'Language A';
+  el.badgeB.textContent = el.langB.value || 'Language B';
+  el.silenceHint.textContent = (Number(el.silence.value)/1000).toFixed(2).replace(/0$/,'')+' s';
+  const meta = MODEL_META[el.model.value]; if(meta) el.costHint.textContent = meta.cost;
+}
+
+/* ---------- ui helpers ---------- */
+let toastTimer;
+function toast(msg, isErr){
+  el.toastMsg.textContent = msg;
+  el.toast.classList.toggle('err', !!isErr);
+  el.toast.querySelector('.em').textContent = isErr ? '⚠️' : '✨';
+  el.toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.toast.classList.remove('show'), isErr?5200:2600);
+}
+function setStatus(state, text){
+  el.statusDot.className = 'dot ' + state;
+  el.statusText.textContent = text;
+}
+
+/* ---------- settings events ---------- */
+el.saveKey.onclick = ()=>{
+  const k = el.apiKey.value.trim();
+  if(!k){ toast('Enter a key first', true); return; }
+  localStorage.setItem(LS.key, k);
+  el.keyStatus.textContent='saved ✓'; el.keyStatus.style.color='var(--green)';
+  toast('API key saved to this browser');
+};
+el.toggleKey.onclick = ()=>{ el.apiKey.type = el.apiKey.type==='password'?'text':'password'; };
+el.swap.onclick = ()=>{ const t=el.langA.value; el.langA.value=el.langB.value; el.langB.value=t; persistLangs(); refreshLabels(); };
+function persistLangs(){ localStorage.setItem(LS.langA, el.langA.value); localStorage.setItem(LS.langB, el.langB.value); }
+el.langA.oninput = ()=>{ persistLangs(); refreshLabels(); };
+el.langB.oninput = ()=>{ persistLangs(); refreshLabels(); };
+el.model.onchange = ()=>{ localStorage.setItem(LS.model, el.model.value); refreshLabels(); };
+el.voice.onchange = ()=>{ localStorage.setItem(LS.voice, el.voice.value); };
+
+/* ---------- voice preview (real OpenAI sample via TTS) ---------- */
+let previewAudio=null;
+el.previewVoice.onclick = async ()=>{
+  const key = (localStorage.getItem(LS.key) || el.apiKey.value || '').trim();
+  if(!key){ toast('Save your API key to preview voices', true); el.settings.open=true; el.apiKey.focus(); return; }
+  const voice = el.voice.value;
+  const sample = "Hi there — this is how I'll sound while I interpret your conversation.";
+  if(previewAudio){ previewAudio.pause(); previewAudio=null; }
+  el.previewVoice.disabled=true; el.previewVoice.textContent='… loading';
+  el.voiceHint.textContent=''; el.voiceHint.style.color='var(--cyan)';
+  try{
+    const resp = await fetch('https://api.openai.com/v1/audio/speech',{
+      method:'POST',
+      headers:{ 'Authorization':`Bearer ${key}`, 'Content-Type':'application/json' },
+      body: JSON.stringify({ model:'gpt-4o-mini-tts', voice, input:sample, response_format:'mp3' })
+    });
+    if(!resp.ok){
+      let d=await resp.text().catch(()=> ''); try{ d=JSON.parse(d).error?.message||d; }catch{}
+      // marin/cedar are realtime-only and may not exist in the TTS endpoint
+      if(/voice/i.test(d) || resp.status===400){
+        el.voiceHint.style.color='var(--amber)';
+        el.voiceHint.textContent='no TTS sample — works live';
+        toast('“'+voice+'” has no standalone sample, but it works during translation.', true);
+      } else if(/401/.test(String(resp.status))) toast('Invalid API key (401)', true);
+      else toast('Preview failed: '+String(d).slice(0,120), true);
+      return;
+    }
+    const blob = await resp.blob();
+    previewAudio = new Audio(URL.createObjectURL(blob));
+    el.voiceHint.textContent='playing…';
+    previewAudio.onended = ()=>{ el.voiceHint.textContent=''; };
+    await previewAudio.play();
+  }catch(e){
+    console.error(e);
+    toast('Preview failed: '+String(e.message||e).slice(0,120), true);
+  }finally{
+    el.previewVoice.disabled=false; el.previewVoice.textContent='▶ Preview';
+  }
+};
+el.silence.oninput = ()=>{ localStorage.setItem(LS.silence, el.silence.value); refreshLabels(); };
+el.clear.onclick = ()=>{ el.transcript.innerHTML=''; updateCount(); };
+
+/* ---------- translation instructions ---------- */
+function buildInstructions(){
+  const A = el.langA.value.trim() || 'English';
+  const B = el.langB.value.trim() || 'Chinese';
+  return (
+`You are a professional simultaneous interpreter bridging a live spoken conversation between two people. `+
+`One person speaks ${A}; the other speaks ${B}.
+
+RULES — follow strictly:
+- If the speech you hear is in ${A}, speak ONLY the natural, fluent ${B} translation.
+- If the speech you hear is in ${B}, speak ONLY the natural, fluent ${A} translation.
+- Output ONLY the translated speech. Never answer questions, give opinions, add greetings, commentary, or explanations, and never say that you are translating.
+- Faithfully preserve meaning, tone, names, and numbers. Keep it concise and idiomatic — say it the way a native speaker would.
+- If the audio is silent, unclear, or not speech, stay completely silent.`
+  );
+}
+
+/* ---------- realtime session config per generation ---------- */
+function buildSessionUpdate(){
+  const meta = MODEL_META[el.model.value] || {gen:'ga'};
+  const instructions = buildInstructions();
+  const silence = Number(el.silence.value) || 700;
+  let voice = el.voice.value;
+  if(meta.gen==='preview' && !PREVIEW_VOICES.has(voice)) voice = 'alloy';
+
+  if(meta.gen==='ga'){
+    return { type:'session.update', session:{
+      type:'realtime',
+      instructions,
+      audio:{
+        input:{
+          transcription:{ model:'gpt-4o-mini-transcribe' },
+          turn_detection:{ type:'server_vad', threshold:0.5, prefix_padding_ms:300, silence_duration_ms:silence }
+        },
+        output:{ voice }
+      }
+    }};
+  }
+  // preview / legacy flat shape
+  return { type:'session.update', session:{
+    modalities:['audio','text'],
+    instructions,
+    voice,
+    input_audio_format:'pcm16',
+    output_audio_format:'pcm16',
+    input_audio_transcription:{ model:'whisper-1' },
+    turn_detection:{ type:'server_vad', threshold:0.5, prefix_padding_ms:300, silence_duration_ms:silence }
+  }};
+}
+
+/* ---------- runtime state ---------- */
+let pc=null, dc=null, micStream=null, audioEl=null, running=false;
+let audioCtx=null, analyser=null, levelRAF=null;
+let currentTurn=null;   // DOM node for the in-progress translation
+
+/* ---------- transcript rendering ---------- */
+function updateCount(){
+  const n = el.transcript.querySelectorAll('.turn').length;
+  el.turnCount.textContent = n ? `· ${n}` : '';
+}
+function addHeard(text){
+  const turn = document.createElement('div');
+  turn.className='turn pending';
+  turn.innerHTML =
+    `<div class="heard"><span class="tag">HEARD</span><span class="heard-txt"></span></div>`+
+    `<div class="trans"><span class="tag">TRANSLATION</span><span class="trans-txt"></span><span class="caret"></span></div>`;
+  turn.querySelector('.heard-txt').textContent = text || '…';
+  el.transcript.appendChild(turn);
+  el.transcript.scrollTop = el.transcript.scrollHeight;
+  currentTurn = turn;
+  updateCount();
+  return turn;
+}
+function ensureTurn(){ if(!currentTurn) addHeard(''); return currentTurn; }
+function appendTranslation(delta){
+  const t = ensureTurn();
+  t.querySelector('.trans-txt').textContent += delta;
+  el.transcript.scrollTop = el.transcript.scrollHeight;
+}
+function finishTurn(finalText){
+  const t = currentTurn; if(!t) return;
+  if(finalText) t.querySelector('.trans-txt').textContent = finalText;
+  const caret = t.querySelector('.caret'); if(caret) caret.remove();
+  t.classList.remove('pending');
+  currentTurn=null;
+}
+function setHeard(text){
+  const t = currentTurn || addHeard(text);
+  const h = t.querySelector('.heard-txt');
+  if(h && text) h.textContent = text;
+}
+
+/* ---------- event handling (robust across API generations) ---------- */
+function handleEvent(ev){
+  let msg; try{ msg = JSON.parse(ev.data); }catch{ return; }
+  const type = msg.type || '';
+
+  // user speech started -> open a fresh turn
+  if(type.indexOf('input_audio_buffer.speech_started')>=0){
+    if(currentTurn && currentTurn.querySelector('.trans-txt').textContent==='') { /* reuse */ }
+    else addHeard('');
+    return;
+  }
+  // input transcription (what the speaker said)
+  if(type.indexOf('input_audio_transcription')>=0 && type.indexOf('completed')>=0){
+    setHeard(msg.transcript || (msg.item && msg.item.transcript) || '');
+    return;
+  }
+  if(type.indexOf('input_audio_transcription.delta')>=0){
+    // partial heard text (GA) — show it live
+    const t = ensureTurn(); const h=t.querySelector('.heard-txt');
+    if(h.textContent==='…') h.textContent='';
+    h.textContent += (msg.delta||''); return;
+  }
+  // translated output transcript (streaming)
+  if(type.indexOf('audio_transcript.delta')>=0 || type==='response.output_text.delta' || type==='response.text.delta'){
+    appendTranslation(msg.delta||''); return;
+  }
+  if(type.indexOf('audio_transcript.done')>=0 || type==='response.output_text.done' || type==='response.text.done'){
+    finishTurn(msg.transcript || msg.text); return;
+  }
+  if(type==='response.done'){ finishTurn(); return; }
+  if(type==='error' || (msg.error)){
+    const e = msg.error || msg;
+    console.error('Realtime error:', e);
+    toast('OpenAI: ' + (e.message || 'session error'), true);
+    return;
+  }
+}
+
+/* ---------- mic level visualizer ---------- */
+function startLevelMeter(stream){
+  try{
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const src = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser(); analyser.fftSize=256;
+    src.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const tick = ()=>{
+      analyser.getByteFrequencyData(data);
+      let sum=0; for(let i=0;i<data.length;i++) sum+=data[i];
+      const avg = sum/data.length;
+      const pct = Math.min(100, Math.max(2, (avg/140)*100));
+      el.levelBar.style.width = pct+'%';
+      const orb = document.querySelector('.orb');
+      if(orb) orb.style.transform = `scale(${1+Math.min(.14,avg/900)})`;
+      levelRAF = requestAnimationFrame(tick);
+    };
+    tick();
+  }catch(e){ /* meter is cosmetic */ }
+}
+function stopLevelMeter(){
+  if(levelRAF) cancelAnimationFrame(levelRAF);
+  levelRAF=null; el.levelBar.style.width='0%';
+  if(audioCtx){ audioCtx.close().catch(()=>{}); audioCtx=null; }
+}
+
+/* ---------- start / stop ---------- */
+async function start(){
+  if(running) return;
+  const key = (localStorage.getItem(LS.key) || el.apiKey.value || '').trim();
+  if(!key){ toast('Add and save your OpenAI API key first', true); el.settings.open=true; el.apiKey.focus(); return; }
+  if(!el.langA.value.trim() || !el.langB.value.trim()){ toast('Set both languages', true); return; }
+  persistLangs();
+
+  const model = el.model.value;
+  const gen = (MODEL_META[model]||{}).gen || 'ga';
+  el.start.disabled=true;
+  setStatus('connecting','Requesting mic…'); el.orbIcon.textContent='🎙';
+  el.stageHint.textContent='Allow microphone access to begin.';
+
+  try{
+    micStream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:true } });
+  }catch(e){
+    setStatus('err','Mic blocked'); el.start.disabled=false; el.orbIcon.textContent='🎧';
+    toast('Microphone permission denied', true); el.stageHint.textContent='Microphone access is required.'; return;
+  }
+
+  try{
+    setStatus('connecting','Connecting to OpenAI…');
+    el.stageHint.textContent='Establishing secure realtime link…';
+
+    pc = new RTCPeerConnection();
+    audioEl = new Audio(); audioEl.autoplay = true;
+    pc.ontrack = e => { audioEl.srcObject = e.streams[0]; };
+    pc.oniceconnectionstatechange = ()=>{
+      if(['failed','disconnected','closed'].includes(pc.iceConnectionState) && running){
+        toast('Connection lost', true); stop();
+      }
+    };
+    micStream.getAudioTracks().forEach(tr => pc.addTrack(tr, micStream));
+
+    dc = pc.createDataChannel('oai-events');
+    dc.onopen = ()=>{
+      dc.send(JSON.stringify(buildSessionUpdate()));
+      running = true;
+      document.body.classList.add('listening');
+      setStatus('live','Listening');
+      el.orbIcon.textContent='🌐';
+      el.stageHint.textContent='Go ahead — speak in either language.';
+      el.stop.disabled=false; el.start.disabled=false;
+      el.settings.open=false;
+      startLevelMeter(micStream);
+      toast('Live — start speaking');
+    };
+    dc.onmessage = handleEvent;
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    const base = gen==='ga'
+      ? 'https://api.openai.com/v1/realtime/calls'
+      : 'https://api.openai.com/v1/realtime';
+    const resp = await fetch(`${base}?model=${encodeURIComponent(model)}`, {
+      method:'POST',
+      body: offer.sdp,
+      headers:{ 'Authorization':`Bearer ${key}`, 'Content-Type':'application/sdp' }
+    });
+    if(!resp.ok){
+      let detail = await resp.text().catch(()=> '');
+      try{ const j=JSON.parse(detail); detail = j.error?.message || detail; }catch{}
+      throw new Error(`${resp.status} ${detail.slice(0,180)}`);
+    }
+    const answerSdp = await resp.text();
+    await pc.setRemoteDescription({ type:'answer', sdp:answerSdp });
+  }catch(e){
+    console.error(e);
+    setStatus('err','Failed');
+    let m = String(e.message||e);
+    if(/401/.test(m)) m='Invalid API key (401). Check your key.';
+    else if(/403/.test(m)) m='Access denied (403). Your key may lack Realtime access or this model.';
+    else if(/404/.test(m)) m='Model not found (404). Try another model.';
+    else if(/429/.test(m)) m='Rate limited / quota (429).';
+    toast(m, true);
+    el.stageHint.textContent='Connection failed — see message below.';
+    stop();
+  }
+}
+
+function stop(){
+  running=false;
+  document.body.classList.remove('listening');
+  stopLevelMeter();
+  finishTurn();
+  try{ dc && dc.close(); }catch{}
+  try{ pc && pc.close(); }catch{}
+  if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
+  if(audioEl){ audioEl.srcObject=null; audioEl=null; }
+  pc=null; dc=null;
+  el.stop.disabled=true; el.start.disabled=false;
+  el.orbIcon.textContent='🎧';
+  setStatus('','Idle');
+  el.stageHint.textContent='Stopped. Press Start to translate again.';
+}
+
+el.start.onclick = start;
+el.stop.onclick = stop;
+
+/* keyboard: space toggles */
+document.addEventListener('keydown', e=>{
+  if(e.code==='Space' && !/INPUT|SELECT|TEXTAREA/.test((e.target.tagName||''))){
+    e.preventDefault(); running ? stop() : start();
+  }
+});
+
+load();
+</script>
+</body>
+</html>
