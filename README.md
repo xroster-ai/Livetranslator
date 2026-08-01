@@ -17,7 +17,7 @@ Point it at a conversation between two people speaking different languages — s
 
 ## 🚀 Use it live
 
-Open the GitHub Pages site for this repo:
+Once GitHub Pages is enabled (see **Deployment** below), the app is served at:
 
 **https://xroster-ai.github.io/Livetranslator/**
 
@@ -51,9 +51,16 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-## 📦 Deployment
+## 📦 Deployment (enable GitHub Pages — one time)
 
-A GitHub Actions workflow (`.github/workflows/deploy-pages.yml`) publishes the site to GitHub Pages on every push.
+The whole app is a single static `index.html`, so GitHub Pages can serve it directly from this branch:
+
+1. Go to **Settings → Pages** in this repository.
+2. Under **Build and deployment → Source**, choose **Deploy from a branch**.
+3. Set **Branch** to `claude/openai-realtime-translator-f7wsk6` and folder to **`/ (root)`**, then **Save**.
+4. Wait ~1 minute, then open **https://xroster-ai.github.io/Livetranslator/**.
+
+(If you merge this into your default branch, point Pages at that branch instead.)
 
 ---
 
