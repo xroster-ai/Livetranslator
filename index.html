@@ -187,6 +187,22 @@
   footer a:hover{text-decoration:underline}
   .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(255,255,255,.07);padding:1px 6px;border-radius:5px;font-size:11px}
 
+  /* photo translate */
+  .photo-card{padding:20px 22px;margin-bottom:20px}
+  .photo-sub{font-size:13px;color:var(--muted);margin:2px 0 14px}
+  .photo-actions{display:flex;gap:12px;flex-wrap:wrap}
+  .btn-photo{padding:13px 22px;color:#fff;background:linear-gradient(120deg,var(--violet),var(--magenta));box-shadow:0 10px 30px -10px rgba(139,92,255,.6)}
+  .btn-photo:hover:not(:disabled){transform:translateY(-2px)}
+  .photo-grid{display:grid;grid-template-columns:190px 1fr;gap:18px;margin-top:18px;align-items:start}
+  .photo-thumb img{width:100%;border-radius:12px;border:1px solid var(--stroke);display:block}
+  .photo-result{display:flex;flex-direction:column;gap:10px;min-width:0}
+  .photo-status{font-size:13px;color:var(--cyan);min-height:16px;display:flex;align-items:center;gap:8px}
+  .photo-out{white-space:pre-wrap;font-size:15.5px;line-height:1.55;background:rgba(10,13,31,.5);border:1px solid var(--stroke);border-radius:12px;padding:14px;min-height:56px;word-break:break-word}
+  .photo-out:empty{display:none}
+  .photo-out-actions{display:flex;gap:10px;flex-wrap:wrap}
+  .spin{width:14px;height:14px;border-radius:50%;border:2px solid rgba(34,227,255,.25);border-top-color:var(--cyan);display:inline-block;animation:spin 0.8s linear infinite}
+
+  @media(max-width:560px){ .photo-grid{grid-template-columns:1fr} }
   @media(max-width:640px){
     .grid{grid-template-columns:1fr}
     .brand h1{font-size:17px}
@@ -298,6 +314,14 @@
           <input id="silence" type="range" min="200" max="2000" step="50" value="700" />
           <div class="model-note">Shorter = snappier but may cut people off. Longer = waits for a full pause before interpreting.</div>
         </div>
+        <div class="field full">
+          <label>Vision model — for 📷 photo translate <span class="hint" id="visionHint"></span></label>
+          <input id="visionModel" list="visionList" placeholder="gpt-5-mini" spellcheck="false" />
+          <datalist id="visionList">
+            <option>gpt-5-mini</option><option>gpt-5</option><option>gpt-5-nano</option><option>gpt-5.4-mini</option>
+          </datalist>
+          <div class="model-note">Any current OpenAI vision-capable chat model. If your account uses a different ID, set it here — the app also auto-tries fallbacks.</div>
+        </div>
       </div>
 
       <div class="model-note" style="margin-top:16px">
@@ -328,6 +352,29 @@
     </div>
   </div>
 
+  <!-- Photo translate -->
+  <div class="card photo-card">
+    <div class="section-title" style="margin:0 0 4px">📷 Photo translate → English</div>
+    <p class="photo-sub">Snap a sign, menu, label, or document in any language and get the English translation.</p>
+    <div class="photo-actions">
+      <button class="btn-photo" id="photoBtn" type="button">📸 Take / choose photo</button>
+      <button class="btn-ghost" id="photoClear" type="button" style="display:none">Clear</button>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" hidden />
+    </div>
+    <div class="photo-grid" id="photoGrid" style="display:none">
+      <div class="photo-thumb"><img id="photoImg" alt="captured photo" /></div>
+      <div class="photo-result">
+        <div class="photo-status" id="photoStatus"></div>
+        <div class="photo-out" id="photoOut"></div>
+        <div class="photo-out-actions" id="photoOutActions" style="display:none">
+          <button class="btn-ghost" id="photoCopy" type="button">⧉ Copy</button>
+          <button class="btn-ghost" id="photoSpeak" type="button">🔊 Read aloud</button>
+          <button class="btn-ghost" id="photoRetry" type="button">↻ Retry</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Transcript -->
   <div class="section-title">Conversation <span id="turnCount"></span></div>
   <div class="transcript" id="transcript"></div>
@@ -345,8 +392,10 @@
 /* ---------- persistence ---------- */
 const LS = {
   key:'lt_apiKey', model:'lt_model', voice:'lt_voice',
-  langA:'lt_langA', langB:'lt_langB', silence:'lt_silence'
+  langA:'lt_langA', langB:'lt_langB', silence:'lt_silence', vision:'lt_visionModel'
 };
+// Fallback vision model IDs tried in order if the configured one is unavailable.
+const VISION_FALLBACKS = ['gpt-5-mini','gpt-5','gpt-5-nano','gpt-5.4-mini','gpt-4o-mini'];
 const $ = id => document.getElementById(id);
 
 const MODEL_META = {
@@ -375,7 +424,10 @@ const el = {
   apiKey:$('apiKey'), saveKey:$('saveKey'), toggleKey:$('toggleKey'), keyStatus:$('keyStatus'),
   langA:$('langA'), langB:$('langB'), swap:$('swapLang'),
   model:$('model'), voice:$('voice'), previewVoice:$('previewVoice'), voiceHint:$('voiceHint'),
-  silence:$('silence'), silenceHint:$('silenceHint'), costHint:$('costHint'),
+  silence:$('silence'), silenceHint:$('silenceHint'), costHint:$('costHint'), visionModel:$('visionModel'), visionHint:$('visionHint'),
+  photoBtn:$('photoBtn'), photoClear:$('photoClear'), photoInput:$('photoInput'), photoGrid:$('photoGrid'),
+  photoImg:$('photoImg'), photoStatus:$('photoStatus'), photoOut:$('photoOut'), photoOutActions:$('photoOutActions'),
+  photoCopy:$('photoCopy'), photoSpeak:$('photoSpeak'), photoRetry:$('photoRetry'),
   badgeA:$('badgeA'), badgeB:$('badgeB'),
   dirControl:$('dirControl'), dirFrom:$('dirFrom'), dirTo:$('dirTo'), dirSwap:$('dirSwap'),
   start:$('startBtn'), stop:$('stopBtn'), clear:$('clearBtn'),
@@ -393,6 +445,7 @@ function load(){
   if(!MODEL_META[el.model.value]) el.model.value = 'gpt-realtime-2.1-mini'; // drop retired ids
   el.voice.value  = localStorage.getItem(LS.voice) || 'marin';
   el.silence.value= localStorage.getItem(LS.silence) || '700';
+  el.visionModel.value = localStorage.getItem(LS.vision) || 'gpt-5-mini';
   if(el.apiKey.value){
     el.keyStatus.textContent='saved ✓'; el.keyStatus.style.color='var(--green)';
     el.settings.open = false;            // collapse settings once a key is stored
@@ -509,7 +562,125 @@ el.previewVoice.onclick = async ()=>{
   }
 };
 el.silence.oninput = ()=>{ localStorage.setItem(LS.silence, el.silence.value); refreshLabels(); };
+el.visionModel.oninput = ()=>{ localStorage.setItem(LS.vision, el.visionModel.value.trim()); };
 el.clear.onclick = ()=>{ el.transcript.innerHTML=''; updateCount(); };
+
+/* ---------- photo translate (vision) ---------- */
+let lastPhotoDataUrl = null;
+
+el.photoBtn.onclick = ()=>{
+  const key = (localStorage.getItem(LS.key) || el.apiKey.value || '').trim();
+  if(!key){ toast('Save your API key first', true); el.settings.open=true; el.apiKey.focus(); return; }
+  el.photoInput.click();
+};
+el.photoClear.onclick = ()=>{
+  lastPhotoDataUrl=null; el.photoInput.value='';
+  el.photoGrid.style.display='none'; el.photoClear.style.display='none';
+  el.photoOut.textContent=''; el.photoOutActions.style.display='none'; el.photoStatus.textContent='';
+};
+el.photoInput.onchange = async ()=>{
+  const file = el.photoInput.files && el.photoInput.files[0];
+  if(!file) return;
+  try{
+    lastPhotoDataUrl = await fileToResizedDataURL(file, 1280);
+  }catch(e){ toast('Could not read that image', true); return; }
+  el.photoImg.src = lastPhotoDataUrl;
+  el.photoGrid.style.display='grid';
+  el.photoClear.style.display='inline-flex';
+  translateImage();
+};
+el.photoRetry.onclick = ()=> translateImage();
+el.photoCopy.onclick = async ()=>{
+  try{ await navigator.clipboard.writeText(el.photoOut.textContent); toast('Copied'); }
+  catch{ toast('Copy failed', true); }
+};
+el.photoSpeak.onclick = ()=>{
+  const txt = el.photoOut.textContent.trim(); if(!txt) return;
+  try{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(txt); u.lang='en-US'; speechSynthesis.speak(u);
+  }catch{ toast('Speech not supported here', true); }
+};
+
+// Downscale + re-encode so uploads stay small (cheaper, faster) and orientation-normalized.
+function fileToResizedDataURL(file, maxDim){
+  return new Promise((resolve, reject)=>{
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = ()=>{
+      let w=img.naturalWidth, h=img.naturalHeight;
+      const scale = Math.min(1, maxDim/Math.max(w,h));
+      const cw=Math.max(1,Math.round(w*scale)), ch=Math.max(1,Math.round(h*scale));
+      const c=document.createElement('canvas'); c.width=cw; c.height=ch;
+      c.getContext('2d').drawImage(img,0,0,cw,ch);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+    img.src = url;
+  });
+}
+
+async function translateImage(){
+  if(!lastPhotoDataUrl) return;
+  const key = (localStorage.getItem(LS.key) || el.apiKey.value || '').trim();
+  if(!key){ toast('Save your API key first', true); return; }
+
+  const configured = (el.visionModel.value || '').trim();
+  const candidates = [configured, ...VISION_FALLBACKS].filter((v,i,a)=> v && a.indexOf(v)===i);
+
+  el.photoOut.textContent=''; el.photoOutActions.style.display='none';
+  el.photoStatus.innerHTML = '<span class="spin"></span> Reading & translating…';
+  el.photoBtn.disabled = true;
+
+  const payload = model => ({
+    model,
+    messages:[
+      { role:'system', content:
+        'You are an expert translator. Read ALL text visible in the image and translate it into natural, fluent English. '+
+        'Preserve the structure and line breaks (e.g. menu items, signs, forms, paragraphs). Keep names, numbers, and prices intact. '+
+        'If the text is already English, return it cleaned up. If there is no readable text, briefly describe the scene in English. '+
+        'Respond with ONLY the English result — no preamble, notes, or quotes.' },
+      { role:'user', content:[
+        { type:'text', text:'Translate everything in this image into English.' },
+        { type:'image_url', image_url:{ url:lastPhotoDataUrl } }
+      ]}
+    ]
+  });
+
+  let lastErr='';
+  for(const model of candidates){
+    try{
+      const resp = await fetch('https://api.openai.com/v1/chat/completions',{
+        method:'POST',
+        headers:{ 'Authorization':`Bearer ${key}`, 'Content-Type':'application/json' },
+        body: JSON.stringify(payload(model))
+      });
+      if(!resp.ok){
+        let d=await resp.text().catch(()=> ''); let m=d; try{ m=JSON.parse(d).error?.message||d; }catch{}
+        lastErr = `${resp.status} ${m}`.slice(0,180);
+        // Model missing/unauthorized → try the next candidate; otherwise stop.
+        if(resp.status===404 || resp.status===400 || /model/i.test(m)) continue;
+        if(/401/.test(String(resp.status))){ lastErr='Invalid API key (401)'; break; }
+        break;
+      }
+      const data = await resp.json();
+      const out = data.choices?.[0]?.message?.content?.trim();
+      if(!out){ lastErr='Empty response'; continue; }
+      el.photoStatus.textContent = `Translated · ${model}`;
+      el.photoOut.textContent = out;
+      el.photoOutActions.style.display='flex';
+      el.photoBtn.disabled=false;
+      if(model!==configured && configured) el.visionHint.textContent = `used ${model}`;
+      return;
+    }catch(e){ lastErr = String(e.message||e); }
+  }
+
+  el.photoStatus.textContent = '';
+  el.photoOut.textContent = '⚠️ Could not translate this photo. '+ (lastErr||'') +
+    '\n\nTip: set a valid vision model in Settings (e.g. gpt-5-mini) and check your key has access.';
+  el.photoOutActions.style.display='flex';
+  el.photoBtn.disabled=false;
+}
 
 /* ---------- translation instructions ---------- */
 function buildInstructions(){

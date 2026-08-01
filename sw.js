@@ -1,5 +1,5 @@
 /* Aurora Live Translator — service worker (app-shell offline cache) */
-const CACHE = 'aurora-v2';
+const CACHE = 'aurora-v3';
 const SHELL = [
   './',
   './index.html',
