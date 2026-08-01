@@ -120,6 +120,17 @@
   .btn-stop:hover:not(:disabled){transform:translateY(-2px)}
   .btn-ghost{padding:13px 20px;color:var(--txt);background:rgba(255,255,255,.05);border:1px solid var(--stroke)}
   .btn-ghost:hover{background:rgba(255,255,255,.09)}
+  /* show only one of Start / Stop at a time */
+  body.listening .btn-start{display:none}
+  body:not(.listening) .btn-stop{display:none}
+
+  /* translator direction control */
+  .dir-control{display:none;align-items:center;gap:12px;margin:2px 0 18px;padding:9px 15px;border-radius:999px;
+    background:rgba(34,227,255,.08);border:1px solid var(--stroke);font-size:14px;flex-wrap:wrap;justify-content:center}
+  .dir-control b{color:var(--txt)}
+  .dir-control .flow{color:var(--cyan);font-size:15px}
+  .dir-control button{padding:8px 14px;font-size:13px;border-radius:10px;color:var(--cyan);background:rgba(34,227,255,.12);border:1px solid var(--stroke-strong)}
+  .dir-control button:hover{background:rgba(34,227,255,.2)}
 
   /* Transcript */
   .section-title{display:flex;align-items:center;justify-content:space-between;margin:0 4px 12px;font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.6px;text-transform:uppercase}
@@ -253,15 +264,14 @@
         <div class="field">
           <label>Model <span class="hint" id="costHint">~$0.016 / min</span></label>
           <select id="model">
-            <optgroup label="Latest — GA (recommended)">
-              <option value="gpt-realtime-mini">gpt-realtime-mini · cheapest</option>
-              <option value="gpt-realtime">gpt-realtime · best quality</option>
-              <option value="gpt-realtime-2.1-mini">gpt-realtime-2.1-mini</option>
-              <option value="gpt-realtime-2.1">gpt-realtime-2.1</option>
+            <optgroup label="Two-way · automatic (recommended)">
+              <option value="gpt-realtime-2.1-mini">gpt-realtime-2.1-mini · cheapest, auto 2-way</option>
+              <option value="gpt-realtime-2.1">gpt-realtime-2.1 · best quality</option>
+              <option value="gpt-realtime">gpt-realtime</option>
+              <option value="gpt-realtime-mini">gpt-realtime-mini</option>
             </optgroup>
-            <optgroup label="Legacy preview (fallback)">
-              <option value="gpt-4o-mini-realtime-preview">gpt-4o-mini-realtime-preview</option>
-              <option value="gpt-4o-realtime-preview">gpt-4o-realtime-preview</option>
+            <optgroup label="Dedicated translator · one-way (use ⇄ toggle)">
+              <option value="gpt-realtime-translate">gpt-realtime-translate</option>
             </optgroup>
           </select>
         </div>
@@ -301,6 +311,10 @@
     <div class="pair-badge">
       <b id="badgeA">English</b><span class="arrows">⇄</span><b id="badgeB">Chinese (Mandarin)</b>
     </div>
+    <div class="dir-control" id="dirControl">
+      🎙 Translating <b id="dirFrom">English</b> <span class="flow">→</span> <b id="dirTo">Chinese</b>
+      <button id="dirSwap" type="button">⇄ Switch direction</button>
+    </div>
     <div class="orb-wrap">
       <div class="ring r3"></div><div class="ring r2"></div><div class="ring"></div>
       <div class="orb"><span class="orb-core" id="orbIcon">🎧</span></div>
@@ -336,15 +350,25 @@ const LS = {
 const $ = id => document.getElementById(id);
 
 const MODEL_META = {
-  'gpt-realtime-mini':       {gen:'ga', cost:'~$0.016 / min'},
-  'gpt-realtime':            {gen:'ga', cost:'~$0.05 / min'},
-  'gpt-realtime-2.1-mini':   {gen:'ga', cost:'~$0.016 / min'},
-  'gpt-realtime-2.1':        {gen:'ga', cost:'~$0.05 / min'},
-  'gpt-4o-mini-realtime-preview':{gen:'preview', cost:'~$0.06 / min'},
-  'gpt-4o-realtime-preview': {gen:'preview', cost:'~$0.24 / min'},
+  // Two-way, single-session interpreter (auto language detection via instructions)
+  'gpt-realtime-2.1-mini': {gen:'ga', cost:'~$0.016 / min'},
+  'gpt-realtime-2.1':      {gen:'ga', cost:'~$0.05 / min'},
+  'gpt-realtime':          {gen:'ga', cost:'~$0.05 / min'},
+  'gpt-realtime-mini':     {gen:'ga', cost:'~$0.016 / min'},
+  // Dedicated speech-to-speech translator (single target language per session)
+  'gpt-realtime-translate':{gen:'translate', cost:'~$0.05 / min'},
 };
-// Voices supported on the older preview models (avoid errors on those).
-const PREVIEW_VOICES = new Set(['alloy','ash','ballad','coral','echo','sage','shimmer','verse']);
+
+// gpt-realtime-translate outputs one of 13 languages, set via session.audio.output.language (ISO 639-1).
+const LANG_CODES = {
+  'english':'en','spanish':'es','portuguese':'pt','portuguese (brazil)':'pt','french':'fr','italian':'it',
+  'german':'de','russian':'ru','japanese':'ja','korean':'ko','hindi':'hi','indonesian':'id','vietnamese':'vi',
+  'chinese':'zh','chinese (mandarin)':'zh','chinese (simplified)':'zh','chinese (traditional)':'zh',
+  'chinese (cantonese)':'zh','cantonese':'zh','mandarin':'zh'
+};
+const OUTPUT_SUPPORTED = { en:'English', es:'Spanish', pt:'Portuguese', fr:'French', it:'Italian', de:'German',
+  ru:'Russian', ja:'Japanese', ko:'Korean', hi:'Hindi', id:'Indonesian', vi:'Vietnamese', zh:'Chinese' };
+function langCode(name){ return LANG_CODES[(name||'').trim().toLowerCase()] || ''; }
 
 /* ---------- element refs ---------- */
 const el = {
@@ -353,6 +377,7 @@ const el = {
   model:$('model'), voice:$('voice'), previewVoice:$('previewVoice'), voiceHint:$('voiceHint'),
   silence:$('silence'), silenceHint:$('silenceHint'), costHint:$('costHint'),
   badgeA:$('badgeA'), badgeB:$('badgeB'),
+  dirControl:$('dirControl'), dirFrom:$('dirFrom'), dirTo:$('dirTo'), dirSwap:$('dirSwap'),
   start:$('startBtn'), stop:$('stopBtn'), clear:$('clearBtn'),
   transcript:$('transcript'), turnCount:$('turnCount'),
   statusDot:$('statusDot'), statusText:$('statusText'), stageHint:$('stageHint'), orbIcon:$('orbIcon'),
@@ -364,10 +389,36 @@ function load(){
   el.apiKey.value = localStorage.getItem(LS.key) || '';
   el.langA.value  = localStorage.getItem(LS.langA) || 'English';
   el.langB.value  = localStorage.getItem(LS.langB) || 'Chinese (Mandarin)';
-  el.model.value  = localStorage.getItem(LS.model) || 'gpt-realtime-mini';
+  el.model.value  = localStorage.getItem(LS.model) || 'gpt-realtime-2.1-mini';
+  if(!MODEL_META[el.model.value]) el.model.value = 'gpt-realtime-2.1-mini'; // drop retired ids
   el.voice.value  = localStorage.getItem(LS.voice) || 'marin';
   el.silence.value= localStorage.getItem(LS.silence) || '700';
-  if(el.apiKey.value){ el.keyStatus.textContent='saved ✓'; el.keyStatus.style.color='var(--green)'; }
+  if(el.apiKey.value){
+    el.keyStatus.textContent='saved ✓'; el.keyStatus.style.color='var(--green)';
+    el.settings.open = false;            // collapse settings once a key is stored
+  } else {
+    el.settings.open = true;
+  }
+  updateModeUI();
+}
+
+/* translator (single-direction) state: 'AtoB' = Language A → Language B */
+let translateDir = 'AtoB';
+function isTranslate(){ return (MODEL_META[el.model.value]||{}).gen === 'translate'; }
+function translateTargetCode(){
+  return translateDir==='AtoB' ? langCode(el.langB.value) : langCode(el.langA.value);
+}
+function updateDirLabels(){
+  el.dirFrom.textContent = (translateDir==='AtoB' ? el.langA.value : el.langB.value) || 'A';
+  el.dirTo.textContent   = (translateDir==='AtoB' ? el.langB.value : el.langA.value) || 'B';
+}
+function updateModeUI(){
+  const t = isTranslate();
+  el.dirControl.style.display = t ? 'flex' : 'none';
+  el.voice.disabled = t; el.previewVoice.disabled = t;
+  el.voiceHint.style.color = 'var(--muted)';
+  el.voiceHint.textContent = t ? 'not used by translator' : '';
+  updateDirLabels();
   refreshLabels();
 }
 function refreshLabels(){
@@ -401,11 +452,21 @@ el.saveKey.onclick = ()=>{
   toast('API key saved to this browser');
 };
 el.toggleKey.onclick = ()=>{ el.apiKey.type = el.apiKey.type==='password'?'text':'password'; };
-el.swap.onclick = ()=>{ const t=el.langA.value; el.langA.value=el.langB.value; el.langB.value=t; persistLangs(); refreshLabels(); };
+el.swap.onclick = ()=>{ const t=el.langA.value; el.langA.value=el.langB.value; el.langB.value=t; persistLangs(); updateModeUI(); };
 function persistLangs(){ localStorage.setItem(LS.langA, el.langA.value); localStorage.setItem(LS.langB, el.langB.value); }
-el.langA.oninput = ()=>{ persistLangs(); refreshLabels(); };
-el.langB.oninput = ()=>{ persistLangs(); refreshLabels(); };
-el.model.onchange = ()=>{ localStorage.setItem(LS.model, el.model.value); refreshLabels(); };
+el.langA.oninput = ()=>{ persistLangs(); updateModeUI(); };
+el.langB.oninput = ()=>{ persistLangs(); updateModeUI(); };
+el.model.onchange = ()=>{ localStorage.setItem(LS.model, el.model.value); updateModeUI(); };
+
+/* translator direction toggle (updates a live session without reconnecting) */
+el.dirSwap.onclick = ()=>{
+  translateDir = translateDir==='AtoB' ? 'BtoA' : 'AtoB';
+  updateDirLabels();
+  if(running && isTranslate() && dc && dc.readyState==='open'){
+    dc.send(JSON.stringify(buildSessionUpdate()));
+    toast('Now translating '+ el.dirFrom.textContent +' → '+ el.dirTo.textContent);
+  }
+};
 el.voice.onchange = ()=>{ localStorage.setItem(LS.voice, el.voice.value); };
 
 /* ---------- voice preview (real OpenAI sample via TTS) ---------- */
@@ -470,33 +531,34 @@ RULES — follow strictly:
 /* ---------- realtime session config per generation ---------- */
 function buildSessionUpdate(){
   const meta = MODEL_META[el.model.value] || {gen:'ga'};
-  const instructions = buildInstructions();
   const silence = Number(el.silence.value) || 700;
-  let voice = el.voice.value;
-  if(meta.gen==='preview' && !PREVIEW_VOICES.has(voice)) voice = 'alloy';
+  const vad = { type:'server_vad', threshold:0.5, prefix_padding_ms:300, silence_duration_ms:silence };
 
-  if(meta.gen==='ga'){
+  // Dedicated translator: one target language per session (set via output.language).
+  if(meta.gen==='translate'){
     return { type:'session.update', session:{
-      type:'realtime',
-      instructions,
       audio:{
         input:{
-          transcription:{ model:'gpt-4o-mini-transcribe' },
-          turn_detection:{ type:'server_vad', threshold:0.5, prefix_padding_ms:300, silence_duration_ms:silence }
+          transcription:{ model:'gpt-realtime-whisper' },
+          noise_reduction:{ type:'near_field' },
+          turn_detection: vad
         },
-        output:{ voice }
+        output:{ language: translateTargetCode() }
       }
     }};
   }
-  // preview / legacy flat shape
+
+  // Two-way interpreter in a single session (auto-detects which language is spoken).
   return { type:'session.update', session:{
-    modalities:['audio','text'],
-    instructions,
-    voice,
-    input_audio_format:'pcm16',
-    output_audio_format:'pcm16',
-    input_audio_transcription:{ model:'whisper-1' },
-    turn_detection:{ type:'server_vad', threshold:0.5, prefix_padding_ms:300, silence_duration_ms:silence }
+    type:'realtime',
+    instructions: buildInstructions(),
+    audio:{
+      input:{
+        transcription:{ model:'gpt-4o-mini-transcribe' },
+        turn_detection: vad
+      },
+      output:{ voice: el.voice.value }
+    }
   }};
 }
 
@@ -541,11 +603,27 @@ function setHeard(text){
   const h = t.querySelector('.heard-txt');
   if(h && text) h.textContent = text;
 }
+function heardDelta(d){
+  // if the current turn already has a translation, this delta belongs to a new utterance
+  if(currentTurn && currentTurn.querySelector('.trans-txt').textContent.trim()!=='') finishTurn();
+  const t = ensureTurn(); const h = t.querySelector('.heard-txt');
+  if(h.textContent==='…') h.textContent='';
+  h.textContent += d;
+}
 
 /* ---------- event handling (robust across API generations) ---------- */
 function handleEvent(ev){
   let msg; try{ msg = JSON.parse(ev.data); }catch{ return; }
   const type = msg.type || '';
+
+  // --- gpt-realtime-translate event names ---
+  if(type==='session.input_transcript.delta'){ heardDelta(msg.delta||''); return; }
+  if(type==='session.output_transcript.delta'){ appendTranslation(msg.delta||''); return; }
+  if(type==='session.input_transcript.completed' || type==='session.input_transcript.done'){
+    if(msg.transcript) setHeard(msg.transcript); return;
+  }
+  if(type==='session.output_transcript.done'){ finishTurn(msg.transcript); return; }
+  if(type==='session.output_audio.done'){ return; }  // audio itself plays via the WebRTC track
 
   // user speech started -> open a fresh turn
   if(type.indexOf('input_audio_buffer.speech_started')>=0){
@@ -617,6 +695,18 @@ async function start(){
 
   const model = el.model.value;
   const gen = (MODEL_META[model]||{}).gen || 'ga';
+
+  // The dedicated translator can only OUTPUT 13 languages — validate the target up front.
+  if(gen==='translate'){
+    const code = translateTargetCode();
+    if(!OUTPUT_SUPPORTED[code]){
+      const target = translateDir==='AtoB' ? el.langB.value : el.langA.value;
+      toast(`gpt-realtime-translate can't output “${target||'that language'}”. Supported: `+
+            Object.values(OUTPUT_SUPPORTED).join(', ')+'. Try switching direction, or use a two-way model.', true);
+      el.settings.open=true; return;
+    }
+  }
+
   el.start.disabled=true;
   setStatus('connecting','Requesting mic…'); el.orbIcon.textContent='🎙';
   el.stageHint.textContent='Allow microphone access to begin.';
@@ -649,7 +739,9 @@ async function start(){
       document.body.classList.add('listening');
       setStatus('live','Listening');
       el.orbIcon.textContent='🌐';
-      el.stageHint.textContent='Go ahead — speak in either language.';
+      el.stageHint.textContent = isTranslate()
+        ? `Speak ${el.dirFrom.textContent} — tap “Switch direction” when the other person talks.`
+        : 'Go ahead — speak in either language.';
       el.stop.disabled=false; el.start.disabled=false;
       el.settings.open=false;
       startLevelMeter(micStream);
@@ -660,9 +752,9 @@ async function start(){
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    const base = gen==='ga'
-      ? 'https://api.openai.com/v1/realtime/calls'
-      : 'https://api.openai.com/v1/realtime';
+    const base = gen==='translate'
+      ? 'https://api.openai.com/v1/realtime/translations/calls'
+      : 'https://api.openai.com/v1/realtime/calls';
     const resp = await fetch(`${base}?model=${encodeURIComponent(model)}`, {
       method:'POST',
       body: offer.sdp,
