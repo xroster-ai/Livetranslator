@@ -57,10 +57,8 @@ The whole app is a single static `index.html`, so GitHub Pages can serve it dire
 
 1. Go to **Settings → Pages** in this repository.
 2. Under **Build and deployment → Source**, choose **Deploy from a branch**.
-3. Set **Branch** to `claude/openai-realtime-translator-f7wsk6` and folder to **`/ (root)`**, then **Save**.
+3. Set **Branch** to `main` and folder to **`/ (root)`**, then **Save**.
 4. Wait ~1 minute, then open **https://xroster-ai.github.io/Livetranslator/**.
-
-(If you merge this into your default branch, point Pages at that branch instead.)
 
 ---
 
